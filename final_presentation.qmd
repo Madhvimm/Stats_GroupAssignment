@@ -1,0 +1,1015 @@
+---
+title: "Comparing Values Across the Pacific Ocean"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+author: "Ayush Lahiri, Jianing Gong, Madhvi Malhotra, Minh Quach, Sean Hambali"
+format: 
+  revealjs:
+    self-contained: true
+editor: visual
+execute:
+  echo: false
+  message: false
+  warning: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+# loading the required libraries
+library(tidyverse)
+library(survey)
+library(srvyr)
+```
+
+```{r}
+#| label: data_prep
+#| include: false
+
+# in this chunk, we execute the commands that will prepare the data used in the presentation graphs
+
+# we load the data
+wvs7_working <- read_csv('../data/csv/wvs7_working.csv')
+
+# creating a by-country summary of the social indicators
+wvs7_soc_sum <- wvs7_working %>%
+  as_survey(weights = c(weight)) %>%
+  group_by(country_alpha, region) %>%
+  summarise_at(vars(important_fam:trust_diffnat), survey_mean, na.rm = T) %>% 
+  mutate(
+    across( c(-1, -ends_with("_se"), -starts_with("pos_"), -starts_with("neg_") ), 
+           ~ . + 1.96*get(str_c(cur_column(), '_se')),
+           .names = 'pos_{.col}'),
+    across( c(-1, -ends_with("_se"), -starts_with("pos_"), -starts_with("neg_") ), 
+           ~ . - 1.96*get(str_c(cur_column(), '_se')),
+           .names = 'neg_{.col}')
+         )
+
+# wrangling the soc_sum data to enable visualization
+wvs7_soc_sum_wide <- wvs7_soc_sum %>% 
+  pivot_longer(cols = important_fam:neg_trust_diffnat,
+               names_to = "var",
+               values_to = "value") %>% 
+  mutate(
+    type = case_when(
+      str_ends(var, "_se") ~ "se", 
+      str_starts(var, "pos_") ~ "ul", 
+      str_starts(var, "neg_") ~ "ll", 
+      TRUE ~ "coef"
+    ),
+    var = str_replace(var, "_se$|^pos_|^neg_", "")
+  ) %>% 
+  pivot_wider(names_from = type, 
+              values_from = value) %>% 
+  mutate(
+    country_focus = ifelse(country_alpha %in% c('CHN', 'IND', 'IDN', 
+                                                'VNM', 'USA'), 
+                           'Focus Countries', 'Others')
+  )
+
+# calculating the global average for the used variables
+wvs7_global_avg <- wvs7_working %>% 
+  as_survey(weights = c(weight)) %>% 
+  summarise_at(vars(important_fam:trust_diffnat), survey_mean, na.rm = T) %>% 
+  pivot_longer(cols = important_fam:trust_diffnat_se, 
+               names_to = "var", 
+               values_to = "value") %>% 
+  mutate(
+    type = case_when(
+      str_ends(var, "_se") ~ "se",
+      TRUE ~ "coef"
+    ),
+    var = str_replace(var, "_se$", "")
+  ) %>% 
+  pivot_wider(names_from = type, 
+              values_from = value)
+
+
+
+```
+
+## Background {.smaller}
+
+**Context**
+
+-   As of 2019, there were 14.1 million immigrants from Asia residing in the United States
+
+-   In the 2020/21 academic year a combined total of 645,622 students from across East Asia, South and Central Asia, and Southeast Asia studied in the United States
+
+-   Asian countries shared different ideological, religious and cultural origins as the US
+
+    +---------------+----------------------------------------+----------------------------+
+    |               | Asian Countries                        | US                         |
+    +===============+========================================+============================+
+    | Ideology      | Socialist/Authoritarian/Democratic     | Democratic                 |
+    +---------------+----------------------------------------+----------------------------+
+    | Main Religion | Islam/Buddhism/Hinduism and many more  | 64% Christian and 30% None |
+    +---------------+----------------------------------------+----------------------------+
+    | Development   | Upper middle income - Indonesia, China | High income                |
+    |               |                                        |                            |
+    |               | Lower middle Income - Vietnam          |                            |
+    +---------------+----------------------------------------+----------------------------+
+
+## Research Framework {.smaller}
+
+-   Targeted countries: United States, China, Indonesia, Vietnam
+
+-   Analysis Dimensions: Social, Economic, Religious, Political
+
+-   Data Resources: World Values Survey, World Values Association, Wave 7 (2017-2022)
+
+**Our Research Question**
+
+How do Vietnamese, Chinese and Indonesian values differ from that of the US across economic, social, political and religious domains?
+
+**Examples of constituent variables in each dimension**:
+
+-   **Social Dimension:** Importance of family and friends, Espousing intolerance towards marginalized groups and so on
+
+-   **Economic Dimension:**Private ownership of business, Should incomes be equal
+
+-   **Religious Dimension:** Is god important in my life, In science v/s religions, religion is always right
+
+-   **Political Dimension:** Political matter, Fight for views
+
+## Theory {.smaller}
+
+**Why Indonesia, Vietnam, and China? It's more than just personal.**
+
+-   Wide diversity in terms of religion, politics, climate, and economic structure
+
+-   Referencing the Inglehart-Welzel cultural maps over the years
+
+**Many influences, many controls**
+
+-   Sex (Kitano et al., 1998) - Immigration - Education level (Welzel, 2011)
+
+-   Age (Hsin and Xie, 2014) - Marital status (Kitano et al., 1998) - Income
+
+**Choices of topic and question**
+
+We look at the supposed cornerstones of the 'Asian values': *familialism, communalism, authority orientations, and work ethic* (Kim, 2010) in conjunction with the main focuses of the Public Religion Research Institute's American Values Survey on the *social, economic, religious, and political* dimensions of America (PRRI, 2022).
+
+## Theory {.smaller}
+
+**Based on the reviewed literature, we expect two main themes:**
+
+-   There would be *some* significant differences between our sampled countries and the US, as well as significant differences among the sampled countries themselves.
+
+-   Due to the growing popularity of progressive ideals and viewpoints oriented towards 'emancipative values' in recent decades, our sampled countries might be closer to the US, on certain issues of the social, economic, and political dimensions, than previously perceived.
+
+# Methods
+
+## How are we doing it? {.smaller}
+
+-   Using the World Values Survey (WVS) Wave 7 data
+
+-   Estimating the following logit model:
+
+    $$
+    \begin{aligned}
+    log(\frac{p}{1-p}) = \alpha_0 & + \sum_{c=1}^{C} \beta_c D_c + \alpha_1 sex + \alpha_2 age + \alpha_3 immigrant + \\
+    & \alpha_4 marital + \alpha_5 educ + \alpha_6 income + \alpha_7 work
+    \end{aligned}
+    $$
+
+-   Parameters of interest: $\beta_c$ for China, Vietnam and Indonesia
+
+## Analysis Steps {.smaller}
+
+First, we define some recoding functions for the cleaning process:
+
+```{r}
+#| label: cleaning_codes_1
+#| eval: false
+#| echo: true
+
+# first, we define some cleaning functions for recoding columns that 
+# will be used throughout the cleaning process.
+
+# 1. recoding 2 options - 1 = Y, 2 = N
+binary_recode_2opt <- function(x) {
+  x[x==2] <- 0
+  x
+}
+
+# 2. RECODING 3 options (with neutral choice as 3rd opt)
+binary_recode_3opt <- function(x) {
+  x[x >= 2] <- 0
+  x
+}
+
+```
+
+## Analysis Steps {.smaller}
+
+-   We recode the columns into binary variable
+
+-   Clean the demographics and survey-related columns
+
+-   Keep only the newly generated binary, demographics and survey-related columns
+
+```{r}
+#| label: cleaning_codes_2
+#| eval: false
+#| echo: true
+
+wvs7_working <- wvs7 %>%
+ mutate(survey_year = A_YEAR,
+        survey_type = "WVS",
+        survey_wave = A_WAVE,
+        ...
+        ) %>%
+ mutate(
+   important_fam = binary_recode_4opt(Q1),
+   important_fr = binary_recode_4opt(Q2),
+   ...
+ ) %>%
+ mutate(eql_inc = binary_recode_10opt(Q106),
+        ...
+        ) %>%
+ mutate(
+   sex = factor(Q260, levels = c(1,2),
+                labels = c("Male", "Female")),
+   ...
+ )
+
+```
+
+## Analysis Steps {.smaller}
+
+For the regressions, we define several functions that:
+
+-   Take in an outcome variable, runs it on a fixed set of control variables
+
+-   Convert the log-odds estimate to its odd ratio format -- also adjusting the SEs, CIs, etc
+
+```{r}
+#| label: cleaning_codes_3
+#| eval: false
+#| echo: true
+
+# defining the regression function
+reg_func <- function(yvar) {
+  
+  # defining the regression function
+  result <- glm(eval(parse(text = yvar)) ~ 
+                  relevel(factor(country_iso), ref = "United States") + 
+                  sex + age + immigrant + marital + 
+                  educ_group + work + income_3, 
+                data = wvs7_working)
+  
+  # outputting the result
+  result
+}
+
+# defining the function to get tidy model and obtain the odds-ratio SE
+tidy_model <- function(model) {
+  
+  # following the steps outlined in andrew heiss's blog:
+  tidy <- broom::tidy(model) %>%
+    mutate(or = exp(estimate),
+           var_diag = diag(vcov(model)), 
+           or_se = sqrt(or^2 * var_diag), 
+           or_ll = or - (1.96*or_se), 
+           or_ul = or + (1.96*or_se))
+  
+  # returning the result
+  tidy
+}
+
+```
+
+## Analysis Steps {.smaller}
+
+We then apply these functions to create a tidy data frame containing the model results:
+
+```{r}
+#| label: cleaning_codes_4
+#| eval: false
+#| echo: true
+
+# storing dep vars of interest in a vector 
+dep_vars <- c("important_fam", "important_fr", 
+              "neighbor_diffrace", "neighbor_gay", "neighbor_imm",
+              "gender_jobs",
+              "happy", "health",
+              "trust", "trust_fam", "trust_first")
+
+# applying the reg function to all dep_vars 
+model_results <- map(dep_vars, reg_func)
+names(model_results) <- dep_vars    # assigning the dep_Var names as element name 
+
+# creating a tidy data out of the model results
+model_results_df <-  model_results %>% 
+  map(tidy_model)
+
+# binding the rows together, creating a single df
+model_results_df <- bind_rows(model_results_df, .id = "dep_var") %>% 
+  mutate(
+    
+    # description for the dep. vars
+    var_desc = case_when(
+      dep_var == "important_fam" ~ "Family", 
+      dep_var == "important_fr" ~ "Friends", 
+      dep_var == "neighbor_diffrace" ~ "Different race", 
+      dep_var == "neighbor_gay" ~ "Homosexuals", 
+      dep_var == "neighbor_imm" ~ "Immigrants",
+      dep_var == "gender_jobs" ~ "Males have more \nright to jobs", 
+      dep_var == "happy" ~ "Happy", 
+      dep_var == "health" ~ "Health", 
+      dep_var == "trust" ~ "Most people",
+      dep_var == "trust_fam" ~ "Family", 
+      dep_var == "trust_first" ~ "First-timers"
+    )
+  )
+```
+
+## Sample Distribution {.smaller}
+
+Most of our observations in the WVS Wave-7 came from **Canada**, **Indonesia**, **China**, **United States** and **Turkey**.
+
+```{r}
+#| label: sample_dist
+#| fig-cap: "Canada, Indonesia, China, and United States contribute the highest number of respondents."
+
+# plotting the by-country sample counts
+wvs7_working %>% 
+  filter(!is.na(country_alpha)) %>% 
+  group_by(country_alpha) %>% 
+  summarise(sample_count = n()) %>% 
+  ggplot(aes(y = reorder(country_alpha, sample_count), x = sample_count)) +
+  geom_col(fill = "skyblue2") +
+  labs(
+    title = "Canada, Indonesia, China, and United States contribute \nthe highest number of respondents.", 
+    y = "Country", 
+    x = "Observations"
+  ) + theme_classic() + 
+  theme(
+  plot.title = element_text(hjust = .7),
+  axis.text.y = element_text(size = 5)
+  )
+```
+
+## Sample Distribution {.smaller}
+
+While the WVS over-represents countries in the population of interest, the survey significantly under-represents China.
+
+```{r}
+#| label: wvs_wb_pop_comparison
+
+# first, we calculate the sample count and proportion of each country in WVS
+wvs7_pop <- wvs7_working %>% 
+  group_by(country_iso, country_alpha) %>% 
+  summarise(sample_count = n()) %>% 
+  ungroup() %>% 
+  mutate(sample_prop = sample_count/sum(sample_count))
+
+# then we get the world bank population count in 2017 
+# (the latest avail.)
+wb_pop <- world_bank_pop %>%
+  filter(indicator == 'SP.POP.TOTL') %>% 
+  select(country, `2017`)
+
+# next, we merge wvs7_pop data with wb_pop data,
+# so we compare the sample/pop proportion for same set of countries
+wvs7_pop <- wvs7_pop %>% 
+  left_join(wb_pop, by = c("country_alpha" = "country")) %>% 
+  rename(pop_count = `2017`) %>% 
+  mutate(pop_prop = pop_count / sum(pop_count, na.rm = T)) %>% 
+  pivot_longer(
+    cols = sample_count:pop_prop,
+    names_to = "var", 
+    values_to = "value"
+  )
+
+# visualizing the results
+pop_sample_prop <- wvs7_pop %>% 
+  filter(var %in% c("sample_prop", "pop_prop"), !is.na(country_alpha)) %>%
+  ggplot(aes(x = value, y = country_alpha)) +
+  geom_line(aes(group = country_alpha)) +
+  geom_point(aes(color = var), size = 2) +
+  labs(
+    x = 'Proportion within 50+ country group',
+    y = 'Country',
+    title = 'China is significantly underrepresented in the WVS Survey.'
+  ) +
+  theme_classic() +
+  theme(
+    plot.title = element_text(hjust = .5),
+    axis.text.y = element_text(size = 6)
+  ) +
+  scale_color_discrete(name = "Type", labels = c("Population", "Sample"))
+
+pop_sample_prop
+```
+
+# Results
+
+## Social Dimension {.smaller}
+
+The World Values Survey data suggests significant societal differences even within Asian countries.
+
+```{r}
+#| label: social_desc_graph 
+
+wvs7_soc_sum_wide %>% 
+  filter(region %in% c("East Asia-Pacific", "South Asia") | 
+           country_alpha == "USA", var == "neighbor_gay") %>% 
+  ggplot(aes(x = coef, y = reorder(country_alpha, coef), 
+             color = country_focus)) +
+  geom_pointrange(aes(xmin = ll, xmax = ul)) +
+  geom_vline(data = (
+    wvs7_global_avg %>% 
+      filter(var == "neighbor_gay")
+  ), aes(xintercept = coef), linetype = "dashed") +
+  geom_point() +
+  labs(x = "% not accepting homosexuals as their neighbors", 
+       y = "Country",
+       title = "The three Asian countries of focus are significantly less tolerant \nthan the US towards the LGBTQ community.") +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = .5)) +
+  guides(color = guide_legend(title = "Region"))
+
+```
+
+## Social Dimension {.smaller}
+
+Chinese, Indonesians and Vietnamese respondents are more likely to ***view family as being important***, ***espouse intolerance towards marginalized groups*** and ***patriarchal views***, and ***are happier!***
+
+```{r}
+#| label: social_regs_prep
+
+# defining the regression function
+reg_func <- function(yvar) {
+  
+  # defining the regression function
+  result <- glm(eval(parse(text = yvar)) ~ 
+                  relevel(factor(country_iso), ref = "United States") + 
+                  sex + age + immigrant + marital + 
+                  educ_group + work + income_3, 
+                data = wvs7_working)
+  
+  # outputting the result
+  result
+}
+
+# defining the function to get tidy model and obtain the odds-ratio SE
+tidy_model <- function(model) {
+  
+  # following the steps outlined in andrew heiss's blog:
+  tidy <- broom::tidy(model) %>%
+    mutate(or = exp(estimate),
+           var_diag = diag(vcov(model)), 
+           or_se = sqrt(or^2 * var_diag), 
+           or_ll = or - (1.96*or_se), 
+           or_ul = or + (1.96*or_se))
+  
+  # returning the result
+  tidy
+}
+
+# storing dep vars of interest in a vector 
+dep_vars <- c("important_fam", "important_fr", 
+              "neighbor_diffrace", "neighbor_gay", "neighbor_imm",
+              "gender_jobs",
+              "happy", "health",
+              "trust", "trust_fam", "trust_first")
+
+# applying the reg function to all dep_vars 
+model_results <- map(dep_vars, reg_func)
+names(model_results) <- dep_vars    # assigning the dep_Var names as element name 
+
+# creating a tidy data out of the model results
+model_results_df <-  model_results %>% 
+  map(tidy_model)
+
+# binding the rows together, creating a single df
+model_results_df <- bind_rows(model_results_df, .id = "dep_var") %>% 
+  mutate(
+    
+    # description for the dep. vars
+    var_desc = case_when(
+      dep_var == "important_fam" ~ "Family", 
+      dep_var == "important_fr" ~ "Friends", 
+      dep_var == "neighbor_diffrace" ~ "Different race", 
+      dep_var == "neighbor_gay" ~ "Homosexuals", 
+      dep_var == "neighbor_imm" ~ "Immigrants",
+      dep_var == "gender_jobs" ~ "Males have more \nright to jobs", 
+      dep_var == "happy" ~ "Happy", 
+      dep_var == "health" ~ "Health", 
+      dep_var == "trust" ~ "Most people",
+      dep_var == "trust_fam" ~ "Family", 
+      dep_var == "trust_first" ~ "First-timers"
+    )
+  )
+```
+
+```{r}
+#| label: social_regs_viz
+
+# removing the pattern
+rm_pattern <- 'relevel\\(factor\\(country_iso\\), ref = "United States"\\)'
+
+# defining the plot function
+multimodel_plot <- function(depvar, dodge_width = .3, title) {
+  
+  model_results_df %>% 
+  filter(dep_var %in% depvar,
+         str_detect(term, 'Indonesia|Vietnam|China')) %>% 
+  mutate(term = str_replace_all(term, rm_pattern, "")) %>% 
+  ggplot(aes(x = term, y = or, color = var_desc)) +
+  geom_pointrange(aes(ymin = or_ll, ymax = or_ul),
+                  position = position_dodge(width = dodge_width)) +
+  geom_hline(aes(yintercept = 1)) +
+  labs(
+    y = "Odds ratio",
+    title = title
+  ) +
+  theme_classic() +
+  scale_color_discrete(name=NULL) +
+  theme(
+    plot.title = element_text(hjust = .5, size = 10),
+    legend.text = element_text(size = 7),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 7.5)
+  ) 
+}
+
+# life priorities plot
+p1 <- multimodel_plot(depvar = c("important_fam", "important_fr"),
+                      dodge_width = .2,
+                      title = "Importance of family and friends")
+
+# tolerance plot
+p2 <- multimodel_plot(depvar = c("neighbor_gay", "neighbor_diffrace", 
+                           "neighbor_imm"),
+                      dodge_width = .2,
+                      title = "Espousing intolerance towards \nmarginalized groups")
+
+# gender view
+p3 <- multimodel_plot(depvar = c("gender_jobs"),
+                      dodge_width = 0,
+                      title = "Espousing patriarchal views")
+
+# well-being view
+p4 <- multimodel_plot(depvar = c("happy", "health"),
+                      dodge_width = .3,
+                      title = "Well-being")
+
+
+# social capital
+p5 <- multimodel_plot(depvar = c("trust", "trust_fam", "trust_first"),
+                      dodge_width = .3,
+                      title = "Trust")
+
+# plotting in a grid
+ggpubr::ggarrange(p1, 
+                  p2 + ggpubr::rremove("x.text") + ggpubr::rremove("x.title"), 
+                  p3 + ggpubr::rremove("x.text") + ggpubr::rremove("x.title"),
+                  p4 + ggpubr::rremove("x.text") + ggpubr::rremove("x.title"),
+                  p5 + ggpubr::rremove("x.text") + ggpubr::rremove("x.title"),
+                  nrow = 3, ncol = 2)
+
+```
+
+## Economic Dimension {.smaller}
+
+```{r}
+#| label: Dataframe for economic and religious dimensions 
+
+wvs7_working <- read_csv('../data/csv/wvs7_working.csv')
+wvs7_econ_rel <- wvs7_working %>%
+  as_survey(weights = c(weight)) %>%
+  group_by(country_alpha, region) %>%
+  summarise_at(vars(eql_inc:rel_person), survey_mean, na.rm = T) %>% 
+  mutate(
+    across( c(-1, -ends_with("_se"), -starts_with("pos_"), -starts_with("neg_") ), 
+           ~ . + 1.96*get(str_c(cur_column(), '_se')),
+           .names = 'pos_{.col}'),
+    across( c(-1, -ends_with("_se"), -starts_with("pos_"), -starts_with("neg_") ), 
+           ~ . - 1.96*get(str_c(cur_column(), '_se')),
+           .names = 'neg_{.col}')
+         )
+```
+
+Americans espouse privatization the most amongst all surveyed countries in Asia and North America.
+
+```{r}
+#| label: Cleaning and Plotting descriptives econ 
+#cleaning Econ 
+wvs7_econ_rel_sum_wide <- wvs7_econ_rel %>% 
+  pivot_longer(cols = eql_inc:neg_rel_person,
+               names_to = "var",
+               values_to = "value") %>% 
+  mutate(
+    type = case_when(
+      str_ends(var, "_se") ~ "se", 
+      str_starts(var, "pos_") ~ "ul", 
+      str_starts(var, "neg_") ~ "ll", 
+      TRUE ~ "coef"
+    ),
+    var = str_replace(var, "_se$|^pos_|^neg_", "")
+  ) %>% 
+  pivot_wider(names_from = type, 
+              values_from = value) %>% mutate(
+    country_focus = ifelse(country_alpha %in% c( 'CHN', 'IND',
+                                                'IDN', 'VNM', 'USA'), 
+                           'Focus Countries', 'Others')
+  )
+
+
+#Descriptive Graphs for Econ
+
+wvs7_econ_rel_sum_wide %>% filter(region %in% c('East Asia-Pacific','North America')) %>%
+  filter(var %in% c('prvt_owner')) %>% 
+  mutate(var_desc = case_when(
+    var == 'prvt_owner' ~ 'Private ownership of business should be increased '
+  )) %>% 
+  ggplot(aes(x = coef, y = tidytext::reorder_within(country_alpha, 
+                                                    coef, var_desc))) +
+  geom_errorbar(aes(xmin = ll, xmax = ul), 
+                width = .2) +
+  geom_point(aes(color = country_focus)) +
+  tidytext::scale_y_reordered() + 
+  labs(
+    x = '% agreeing with the statement', 
+    y = 'Country',
+    title = 'Private ownership of business should be increased'
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.y = element_text(size = 5), 
+    axis.text.x = element_text(size = 10),
+    plot.title = element_text(hjust = .5, size = 20)
+  ) +geom_text(aes(label=ifelse(country_alpha %in% c('CHN','IDN', 'VNM', 'USA'), country_alpha,"")), size = 3.5, nudge_x = 0.045, fontface = 'bold')+
+  
+  guides(color = guide_legend(title = 'Region'))
+
+```
+
+## Economic Dimension {.smaller}
+
+```{r}
+#| label: reg_function econ 
+
+# defining the regression function
+reg_func <- function(yvar) {
+  # defining the regression function
+  result <- glm(eval(parse(text = yvar)) ~ 
+                  country_iso_lev + immigrant +
+                  sex + age  + marital + 
+                  educ_group + work + income_3, 
+                data = wvs7_working)
+  
+  # outputting the result
+  result
+}
+
+# defining the function to get tidy model and obtain the odds-ratio SE
+tidy_model <- function(model) {
+  
+  # following the steps outlined in andrew heiss's blog:
+  tidy <- broom::tidy(model) %>%
+    mutate(or = exp(estimate),
+           var_diag = diag(vcov(model)), 
+           or_se = sqrt(or^2 * var_diag), 
+           or_ll = or - (1.96*or_se), 
+           or_ul = or + (1.96*or_se))
+  
+  # returning the result
+  tidy
+}
+
+```
+
+```{r}
+#| label: reg_execution_econ
+wvs7_working$country_iso <- as.factor(wvs7_working$country_iso)
+wvs7_working$country_iso_lev = relevel(wvs7_working$country_iso, ref = "United States")
+
+# storing dep vars of interest in a vector 
+dep_vars <- c('eql_inc','prvt_owner','more_compete','hard_work')
+
+# applying the reg function to all dep_vars 
+model_results <- map(dep_vars, reg_func)
+names(model_results) <- dep_vars    # assigning the dep_Var names as element name 
+
+# creating a tidy data out of the model results
+model_results_df <-  model_results %>% 
+  map(tidy_model)
+
+# binding the rows together, creating a single df
+model_results_df <- bind_rows(model_results_df, .id = "dep_vars") %>% 
+  mutate(
+    
+    # description for the dep. vars
+    var_desc = case_when(
+    dep_vars == 'eql_inc' ~ 'Incomes should be equal',
+    dep_vars == 'prvt_owner' ~ 'Private Ownership of business should be increased ', 
+    dep_vars == 'more_compete' ~ 'More compeititon is good', 
+    dep_vars == 'hard_work' ~ 'Hard work brings better life'
+    )
+  )
+```
+
+Chinese, Indonesian and Vietnamese respondents have lesser odds of holding free market views as compared to Americans.
+
+```{r}
+#| label: reg_plot_econ
+
+# removing the pattern
+rm_pattern <- 'country_iso_lev'
+
+# defining the plot function
+multimodel_plot <- function(depvar, dodge_width = .3, title) {
+  
+  model_results_df %>% 
+  filter(dep_vars %in% depvar,
+         str_detect(term, 'Indonesia|Vietnam|China')) %>% 
+  mutate(term = str_replace_all(term,rm_pattern, "")) %>%
+  ggplot(aes(x = term, y = or, color = var_desc)) +theme(plot.title = element_text(hjust = 0.5))+
+  geom_pointrange(aes(ymin = or_ll, ymax = or_ul),
+                  position = position_dodge(width = dodge_width)) +
+  geom_hline(aes(yintercept = 1)) +
+  labs(
+    y = "Odds ratio",
+    title = title
+  ) +
+  theme_classic() +
+  scale_color_discrete(name=NULL) +
+  theme(
+    plot.title = element_text(hjust = .5, size = 11, face = 'bold'),
+    legend.text = element_text(size = 7),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 7.5),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)
+    
+  ) 
+}
+
+# Income equality 
+p1 <- multimodel_plot(depvar = c("eql_inc",'hard_work'),
+                      dodge_width = 0,
+                      title = "Income") + scale_color_manual(values = c("purple",'orange')) + theme(legend.title=element_blank())
+
+# Business and competition
+p2 <- multimodel_plot(depvar = c("prvt_owner", 'more_compete'),
+                      dodge_width = .3,
+                      title = 'Business') + scale_color_manual(values = c("red",'green'))  + theme(legend.title=element_blank())
+
+
+# plotting in a grid
+ggpubr::ggarrange(p1, 
+                  p2 + ggpubr::rremove("x.title"), nrow =2)
+
+```
+
+## Religious Dimension {.smaller}
+
+Proportion of Indonesians and Chinese regarding their importance of God lie on extreme ends
+
+```{r}
+#|label: Plot_desc_rel 
+wvs7_econ_rel_sum_wide %>% filter(region %in% c('East Asia-Pacific','North America')) %>%
+  filter(var %in% c('imp_god')) %>% 
+  mutate(var_desc = case_when(
+    var == 'imp_god' ~ 'God is important in my life'
+  )) %>% 
+  ggplot(aes(x = coef, y = tidytext::reorder_within(country_alpha, 
+                                                    coef, var_desc))) +
+  geom_errorbar(aes(xmin = ll, xmax = ul), 
+                width = .2) +
+  geom_point(aes(color = country_focus)) +
+  tidytext::scale_y_reordered() + 
+  labs(
+    x = '% agreeing with the statement', 
+    y = 'Country',
+    title = 'God is important in my life'
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.y = element_text(size = 5), 
+    axis.text.x = element_text(size = 10),
+    plot.title = element_text(hjust = .5, size = 20)
+  ) +geom_text(aes(label=ifelse(country_alpha %in% c('CHN','IDN', 'VNM', 'USA'), country_alpha,"")), size = 3.5, nudge_x = 0.045, fontface = 'bold')+
+  
+  guides(color = guide_legend(title = 'Region'))
+
+```
+
+```{r}
+#| label: reg_function_rel
+# storing dep vars of interest in a vector 
+dep_vars <- c('imp_god','rel_always_right', 'acceptable_rel', 'rel_person')
+
+# applying the reg function to all dep_vars 
+model_results <- map(dep_vars, reg_func)
+names(model_results) <- dep_vars    # assigning the dep_Var names as element name 
+
+# creating a tidy data out of the model results
+model_results_df <-  model_results %>% 
+  map(tidy_model)
+
+# binding the rows together, creating a single df
+model_results_df <- bind_rows(model_results_df, .id = "dep_vars") %>% 
+  mutate(
+    
+    # description for the dep. vars
+    var_desc = case_when(
+    dep_vars == 'imp_god' ~ 'Importance of God in life',
+    dep_vars ==  'rel_always_right' ~ 'In science v/s religion, \nreligion is \nalways right',
+    dep_vars == 'acceptable_rel' ~ 'Only acceptable religion \nis own', 
+    dep_vars == 'freq_rel_services' ~ 'Attend religious services \nat least once a week',   
+    dep_vars == 'rel_person' ~ 'Considers themselves \nReligious Person '
+    )
+  )
+```
+
+## Religious Dimension {.smaller}
+
+Indonesia is most likely to hold strong religious beliefs as compared to China, Vietnam and the United States.
+
+```{r}
+#| label: reg_plot_rel
+
+# removing the pattern
+rm_pattern <- 'country_iso_lev'
+
+# defining the plot function
+multimodel_plot <- function(depvar, dodge_width = .3, title) {
+  
+  model_results_df %>% 
+  filter(dep_vars %in% depvar,
+         str_detect(term, 'Indonesia|Vietnam|China')) %>% 
+  mutate(term = str_replace_all(term, rm_pattern, "")) %>% 
+  ggplot(aes(x = term, y = or, color = var_desc))+theme(plot.title = element_text(hjust = 0.5))+
+  geom_pointrange(aes(ymin = or_ll, ymax = or_ul),
+                  position = position_dodge(width = dodge_width)) +
+  geom_hline(aes(yintercept = 1)) +
+  labs(
+    y = "Odds ratio",
+    title = title
+  ) +
+  theme_classic() +
+  scale_color_discrete(name=NULL) +
+  theme(
+    plot.title = element_text(hjust = .5, size = 11, face = 'bold'),
+    legend.text = element_text(size = 7),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 7.5)
+  ) + scale_y_continuous(n.breaks=5) 
+}
+
+# Income equality 
+p1 <- multimodel_plot(depvar = c("imp_god",'rel_person'),
+                      dodge_width = 0,
+                      title = "Religious way of life") + scale_color_manual(values = c("purple",'#FFC0CB')) + theme(legend.title=element_blank())
+
+# Business and competition
+p2 <- multimodel_plot(depvar = c("rel_always_right", 'acceptable_rel'),
+                      dodge_width = .3,
+                      title = 'Dogmatic religious beliefs') + scale_color_manual(values = c("red",'green'))  + theme(legend.title=element_blank())
+
+
+# plotting in a grid
+ggpubr::ggarrange(p1, 
+                  p2 + ggpubr::rremove("x.title"), nrow =2)
+```
+
+## Political Dimension {.smaller}
+
+![](images/pol_img.jpeg)
+
+China, Vietnam and Indonesia agree more with having a strong democratic system and also a strong leader than USA.
+
+## Political Dimension {.smaller}
+
+Americans are ***more willing*** to ***discuss political matters with friends*** and ***have more interest in politics*** as compared to Asian countries. However, although Vietnamese are interested in politics, they aren't willing to discuss these matters with friends.
+
+```{r}
+# storing dep vars of interest in a vector 
+dep_vars <- c("interest_in_politics", "discuss_political_matter",'signing_a_petition','joining_boycott','peaceful_demonstration','unofficial_strikes','Having_strong_leader','democratic_political_system','political_views')
+
+# applying the reg function to all dep_vars 
+model_results <- map(dep_vars, reg_func)
+names(model_results) <- dep_vars    # assigning the dep_Var names as element name 
+
+# creating a tidy data out of the model results
+model_results_df <-  model_results %>% 
+  map(tidy_model)
+
+# binding the rows together, creating a single df
+model_results_df <- bind_rows(model_results_df, .id = "dep_var") %>% 
+  mutate(
+    
+    # description for the dep. vars
+    var_desc = case_when(
+      dep_var == "interest_in_politics" ~ "Interest In Politics", 
+      dep_var == "discuss_political_matter" ~ "Discuss Political Matter with friends",
+      dep_var == "signing_a_petition" ~ "Have signed a Petition",
+      dep_var == "joining_boycott" ~ "Have joined a Boycott",
+      dep_var == "peaceful_demonstration" ~ "Attended Lawful/Peaceful Demonstration",
+      dep_var == "unofficial_strikes" ~ "Joined Strikes",
+      dep_var == "Having_strong_leader" ~ "Having a strong leader who does not have to bother \nwith parliament and elections",
+      dep_var == "democratic_political_system" ~ "Having a democratic political system",
+      dep_var == "political_views" ~ "Political Views"
+    )
+  )
+```
+
+```{r}
+# removing the pattern
+rm_pattern <- 'country_iso_lev'
+
+# defining the plot function
+multimodel_plot <- function(depvar, dodge_width = .3, title) {
+  
+  model_results_df %>% 
+  filter(dep_var %in% depvar,
+         str_detect(term, 'Indonesia|Vietnam|China')) %>% 
+  mutate(term = str_replace_all(term, rm_pattern, "")) %>% 
+  ggplot(aes(x = term, y = or, color = var_desc)) +theme(plot.title = element_text(hjust = 0.5))+
+  geom_pointrange(aes(ymin = or_ll, ymax = or_ul),
+                  position = position_dodge(width = dodge_width)) +
+  geom_hline(aes(yintercept = 1)) +
+  labs(
+    y = "Odds ratio",
+    title = title
+  ) +
+  theme_classic() +
+  scale_color_discrete(name=NULL) +
+  theme(
+    plot.title = element_text(hjust = .5, size = 10),
+    legend.text = element_text(size = 7),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 7.5)
+  ) 
+}
+
+
+p1 <- multimodel_plot(depvar = c("interest_in_politics","discuss_political_matter"),
+                      dodge_width = .4,
+                      title = "Political Matter")
+
+
+# plotting in a grid
+ggpubr::ggarrange(p1)
+```
+
+## Political Dimension {.smaller}
+
+USA have strong political participation in terms of signing a petition, joining a boycott, attending peaceful demonstration and joining strikes.
+
+```{r}
+
+p2 <- multimodel_plot(depvar = c("signing_a_petition","joining_boycott"),
+                      dodge_width = .2,
+                      title = "Political Participation")
+
+
+p3 <- multimodel_plot(depvar = c("peaceful_demonstration","unofficial_strikes"),
+                     dodge_width = .2,
+                      title = "Political Participation (views)")
+
+
+# plotting in a grid
+ggpubr::ggarrange(p2, p3,nrow=2,ncol=1)
+```
+
+## Political Dimension {.smaller}
+
+China, Indonesia and Vietnam wants to have a democratic political system more than USA, and Vietnam and Indonesia believe in having a strong leader who doesn't bother with election.
+
+```{r}
+p4 <- multimodel_plot(depvar = c("Having_strong_leader", "democratic_political_system"),
+                      dodge_width = .2,
+                      title = "Political System/Regime")
+
+p4
+
+```
+
+## Conclusion {.smaller}
+
+**On our findings:**
+
+-   The results are consistent with our initial expectations and past literature, reinforcing the rebuttal that 'the Asian value' is not homogenous, nor is it monolithically different from that of the West (if arguing that there is a definitive one).
+
+-   The results also show some large overlap in 'values', confirming what (Wezel, 2011) would argue as a 'universal model of human development'.
+
+-   The results are also largely consistent with our personal experience/on-the-ground perspective of our own countries.
+
+## Conclusion {.smaller}
+
+**On limitations and future improvements:**
+
+-   National-level aggregates can be unreliable to use as macro-level predictors with imprecise survey instruments
+
+-   Survey question wording can be more precise given its nuanced yet outsize implication (similarly with the 7-point agreement scale)
+
+-   Time-series analysis would be extremely useful to further investigate the universal human development model.
+
+-   More dimensions, more questions to be examined
+
+# Questions?

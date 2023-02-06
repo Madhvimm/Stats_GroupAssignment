@@ -1,0 +1,388 @@
+---
+title: "Data Cleaning Notebook"
+author: "Group 5"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+format: 
+  html:
+    self-contained: true
+    toc: true
+editor: visual
+execute:
+  echo: true
+  message: false
+  warning: false
+---
+
+# Pre-amble
+
+Before starting the cleaning, we import the required libraries and specify the preferred knitting options:
+
+```{r}
+#| label: setup 
+#| output: false
+
+# loading the required libraries
+library(tidyverse)
+library(reactable)
+
+# specifying the knitting options - to keep the output colors as they are
+options(crayon.enabled = TRUE)
+old.hooks <- fansi::set_knit_hooks(knitr::knit_hooks)
+
+```
+
+# Importing the Data
+
+We first load the downloaded csv WVS data:
+
+```{r}
+#| label: data_import
+
+# importing the csv data:
+wvs7 <- read.csv("../data/csv/WVS_Wave_7.csv")
+```
+
+# Data Cleaning
+
+## Pre-cleaning Preparation
+
+We first define some wrapper functions that will be used repeatedly throughout the cleaning process:
+
+```{r}
+#| label: pre_cleaning_funcs
+#| code-fold: true
+
+# defining functions that would be used in the cleaning process
+
+# 1. recoding 2 options - 1 = Y, 2 = N
+binary_recode_2opt <- function(x) {
+  x[x==2] <- 0
+  x
+}
+
+# 2. RECODING 3 options (with neutral choice as 3rd opt)
+binary_recode_3opt <- function(x) {
+  x[x >= 2] <- 0
+  x
+}
+
+# 3. recoding 4 options - 1-2 Important, 3-4 Not important
+binary_recode_4opt <- function(x) {
+  x[x<=2] <- 1
+  x[x>2] <- 0
+  x
+}
+
+# 4. RECODING 5 options (with neutral choice in the middle)
+binary_recode_5opt <- function(x) {
+  x[x <= 2] <- 1
+  x[x > 2] <- 0
+  x
+}
+
+#5. RECODING 10 point options 
+binary_recode_10opt <- function(x) {
+  x[x <= 4] <- 1
+  x[x > 4] <- 0
+  x
+}
+
+#6 RECODING 7 point option ( Q171)
+binary_recode_7opt <- function(x) {
+  x[x <= 2] <- 1 #at least once a week
+  x[x > 2] <- 0 #less than once a week
+  x
+}
+
+
+#8 RECODING for negative point option
+binary_recode_8opt <- function(x) {
+  x[x>0 & x <= 2] <- 1 
+  x[x > 2] <- 0
+  x
+}
+
+#9 RECODING for scale of 1- 10 (Political Q240) - making 5 as the middle ground
+binary_recode_9opt <- function(x) {
+  x[x>0 & x <= 5] <- 1 #1 is towards left views
+  x[x > 5] <- 0   #2 is towards right views 
+  x
+}
+
+#10 reverse coding 10 point for importance of god question
+rev_binary_recode_10opt <- function(x) {
+  x[x <= 4] <- 0
+  x[x > 4] <- 1
+  x
+}
+```
+
+Next, we will perform some cleaning on some variables in key sections of interest, and these sections are listed as follows. We won't be keeping all variables in the raw dataset -- just the ones that we'll be using for analysis.
+
+## Survey Identifiers
+
+```{r}
+#| label: cleaning_svy_id
+
+wvs7_working <- wvs7 %>% 
+  mutate(survey_year = A_YEAR, 
+         survey_type = "WVS",
+         survey_wave = A_WAVE,
+         country_iso = factor(B_COUNTRY, 
+                               levels = c(8, 20, 32, 51, 36, 40, 31, 50, 112, 
+                                          68, 70, 76, 100, 124, 152, 156, 170, 
+                                          191, 196, 203, 208, 218, 818,
+                                          422, 434, 440, 446, 458, 484, 496, 
+                                          499, 504, 104, 528, 554, 558, 566, 
+                                          807, 578, 586, 604,608, 616, 
+                                          620, 630, 642,
+                                          233, 231, 246, 250, 268, 276, 300, 
+                                          320, 344, 348, 352, 360, 364, 368, 
+                                          380, 392, 400, 398, 404, 417,
+                                          643, 688, 702, 703, 705, 410,
+                                          724, 752, 756, 158, 762, 764, 
+                                          788, 792, 804, 826, 840, 862, 
+                                          704, 716), 
+                               labels = c("Albania", "Andorra", "Argentina", 
+                                          "Armenia", "Australia", "Austria", 
+                                          "Azerbaijan", "Bangladesh", "Belarus", 
+                                          "Bolivia", "Bosnia Herzegovina", 
+                                          "Brazil", "Bulgaria", "Canada", 
+                                          "Chile", "China", "Colombia", 
+                                          "Croatia", 'Cyprus', 
+                                          "Czechia", "Denmark", 
+                                          "Ecuador", "Egypt", 
+                                          "Lebanon", "Libya", "Lithuania", 
+                                          "Macao SAR PRC", "Malaysia", 
+                                          "Mexico", "Mongolia", "Montenegro", 
+                                          "Morocco", "Myanmar", "Netherlands",
+                                          "New Zealand", "Nicaragua", 
+                                          "Nigeria", "North Macedonia", 
+                                          "Norway", "Pakistan", "Peru", 
+                                          "Philippines", "Poland", "Portugal",
+                                          "Puerto Rico", "Romania", 
+                                          "Estonia", "Ethiopia", "Finland",
+                                          "France", "Georgia", "Germany", 
+                                          "Greece", "Guatemala", 
+                                          "Hong Kong SAR PRC", 
+                                          "Hungary", "Iceland", 
+                                          "Indonesia", "Iran", "Iraq", 
+                                          "Italy", "Japan", "Jordan", 
+                                          "Kazakhstan", "Kenya", "Kyrgyztan", 
+                                          "Russia", "Serbia", "Singapore", 
+                                          "Slovakia", "Slovenia", "South Korea", 
+                                          "Spain", "Sweden", "Switzerland", 
+                                          "Taiwan ROC", "Tajikistan", 
+                                          "Thailand","Tunisia", "Turkey", 
+                                          "Ukraine", "United Kingdom", 
+                                          "United States", "Venezuela", 
+                                          "Vietnam", "Zimbabwe")),
+         country_alpha = B_COUNTRY_ALPHA, 
+         region = factor(regionWB, 
+                         levels = c(1:7), 
+                         labels = c("Africa", "South Asia", 
+                                    "North America", "MENA", "South America", 
+                                    "Europe", "East Asia-Pacific")),
+         survey_id = D_INTERVIEW,
+         survey_date = lubridate::ymd(J_INTDATE), 
+         town_size = G_TOWNSIZE,
+         town_size2 = G_TOWNSIZE2, 
+         settlement_type = H_SETTLEMENT, 
+         urban = H_URBRURAL,
+         psu = I_PSU, 
+         long = O1_LONGITUDE,
+         lat = O2_LATITUDE, 
+         literate = E1_LITERACY,
+         weight = W_WEIGHT,
+         eq_weight = S018
+         )
+
+```
+
+## A. Social Values, Attitudes and Stereotypes
+
+```{r}
+#| label: cleaning_soc
+
+# cleaning social values, norms, and stereotypes columns
+wvs7_working <- wvs7_working %>% 
+  mutate(
+    important_fam = binary_recode_4opt(Q1), 
+    important_fr = binary_recode_4opt(Q2),
+    neighbor_add = binary_recode_2opt(Q18), 
+    neighbor_diffrace = binary_recode_2opt(Q19), 
+    neighbor_aids = binary_recode_2opt(Q20),
+    neighbor_imm = binary_recode_2opt(Q21),
+    neighbor_gay = binary_recode_2opt(Q22), 
+    neighbor_diffrelig = binary_recode_2opt(Q23),
+    neighbor_drink = binary_recode_2opt(Q24),
+    neighbor_unmarr= binary_recode_2opt(Q25),
+    neighbor_difflg = binary_recode_2opt(Q26), 
+    gender_child_suffer = binary_recode_4opt(Q28), 
+    gender_pol_leader = binary_recode_4opt(Q29),
+    gender_univ = binary_recode_4opt(Q30),
+    gender_exec = binary_recode_4opt(Q31),
+    gender_hwife = binary_recode_4opt(Q32),
+    gender_jobs = binary_recode_5opt(Q33),
+    gender_jobs_right = binary_recode_3opt(Q33_3)
+  )
+
+```
+
+## B. Happiness, Well-Being and Social Capital
+
+```{r}
+#| label: cleaning_happiness
+
+# cleaning happiness and well-being variables
+wvs7_working <- wvs7_working %>% 
+  mutate(
+    happy = binary_recode_4opt(Q46),
+    health = binary_recode_5opt(Q47), # fair health is recoded as 0.
+    trust = binary_recode_2opt(Q57),
+    trust_fam = binary_recode_4opt(Q58),
+    trust_neighbor = binary_recode_4opt(Q59),
+    trust_personal = binary_recode_4opt(Q60),
+    trust_first = binary_recode_4opt(Q61),
+    trust_diffrelig = binary_recode_4opt(Q62),
+    trust_diffnat = binary_recode_4opt(Q63)
+  )
+
+```
+
+## C. Economic Values
+
+```{r}
+wvs7_working <- wvs7_working %>% 
+  mutate( eql_inc = binary_recode_10opt(Q106),
+          prvt_owner = binary_recode_10opt(Q107),
+          more_compete = binary_recode_10opt(Q109),
+          hard_work = binary_recode_10opt(Q110))
+```
+
+## D. Religious Values
+
+```{r}
+wvs7_working <- wvs7_working %>% 
+  mutate(imp_god = rev_binary_recode_10opt(Q164),
+         rel_always_right = binary_recode_4opt(Q169),
+          acceptable_rel = binary_recode_4opt(Q170),
+          freq_rel_services = binary_recode_7opt(Q171),
+          rel_person = binary_recode_3opt(Q173),
+         which_rel = Q289)
+```
+
+## E. Political Interest and Political Participation
+
+```{r}
+wvs7_working <- wvs7_working %>% 
+  mutate(
+    interest_in_politics = binary_recode_8opt(Q199), 
+    discuss_political_matter = binary_recode_8opt(Q200),
+    signing_a_petition  = binary_recode_8opt(Q209),
+    joining_boycott =  binary_recode_8opt(Q210),
+    peaceful_demonstration =  binary_recode_8opt(Q211),
+    unofficial_strikes = binary_recode_8opt(Q212)
+  )
+```
+
+## F. Political Culture and Political Regimes
+
+```{r}
+wvs7_working <- wvs7_working %>% 
+  mutate(
+    Having_strong_leader = binary_recode_8opt(Q235), 
+    democratic_political_system = binary_recode_8opt(Q238),
+    political_views  = binary_recode_9opt(Q240),
+  )
+```
+
+## G. Demographics
+
+```{r}
+#| label: cleaning_demographics
+
+# here, we clean up individual level demographic data:
+wvs7_working <- wvs7_working %>% 
+  mutate(
+    sex = factor(Q260, levels = c(1,2), 
+                 labels = c("Male", "Female")),
+    yob = Q261,
+    age = Q262,
+    age_group = X003R,
+    age_group2 = X003R2, 
+    immigrant = factor(Q263, levels = c(1,2), 
+                       labels = c("Non-immigrant", "Immigrant")),
+    immigrant_moth = Q264,
+    immigrant_fath = Q265, 
+    citizen = Q269,
+    hh_size = Q270,
+    live_w_par = Q271,
+    marital = factor(Q273, levels = c(1:6), 
+                     labels = c("Married", 
+                                "Living together", 
+                                "Divorced", 
+                                "Separated", 
+                                "Widowed", 
+                                "Single")),
+    children = Q274,
+    educ = Q275,
+    educ_group = factor(Q275R, levels = c(1, 2, 3), 
+                        labels = c("Lower", 
+                                   "Middle",
+                                   "Higher")),
+    employment = Q279,
+    work = factor(
+      case_when(
+        employment %in% c(1:3) ~ 1,
+        employment %in% c(4:7) ~ 0    # class 8 (Others/mi/DK) assigned NA
+        ), 
+      levels = c(0, 1), 
+      labels = c("Not employed", 
+                 "Employed")), 
+    occ_group = Q281,
+    sector = Q284,
+    breadwinner = Q285,
+    income_10 = Q288,
+    income_3 = factor(Q288R, levels = c(1:3), 
+                      labels = c("Low", "Medium", "High")),
+    relig = Q289
+  )
+
+```
+
+# Selecting Relevant Columns
+
+Here, we select only the relevant columns to be used in our analysis to minimize unnecessary memory use:
+
+```{r}
+#| label: select_cols
+
+# select the first and the last columns generated in 
+# the above cleaning steps:
+wvs7_working <- wvs7_working %>%
+  select(survey_year:relig)     # change this code if you're changing the first 
+                                # and last-generated columns in the 
+                                # above sections!
+
+# printing interactive tablehead with reactable
+reactable(head(wvs7_working, n = 10),
+          compact = T,
+          highlight = T,
+          defaultColDef = colDef(minWidth = 120))
+```
+
+# Saving/Exporting the Data
+
+Here, we export the analysis-ready dataset to both `csv` and `Rda` format:
+
+```{r}
+#| label: export_data 
+
+# saving the data
+saveRDS(wvs7_working, file = '../data/rdata/wvs7_working.Rda')
+
+# exporting the data to csv
+write.csv(wvs7_working, '../data/csv/wvs7_working.csv')
+
+```
